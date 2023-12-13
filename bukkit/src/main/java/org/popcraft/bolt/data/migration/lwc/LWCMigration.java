@@ -181,6 +181,9 @@ public class LWCMigration {
                     access.put(passwordSource.toString(), defaultAccessNormal);
                 }
             }
+            System.out.println("++++++++++++++++++++++");
+            System.out.println(protection.owner());
+            System.out.println("++++++++++++++++++++++");
             final UUID ownerUuid = Optional.ofNullable(Profiles.findProfileByName(protection.owner()).uuid())
                     .orElseGet(() -> Profiles.lookupProfileByName(protection.owner()).join().uuid());
             final BlockProtection blockProtection = new BlockProtection(
