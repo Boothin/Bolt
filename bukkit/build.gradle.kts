@@ -15,6 +15,7 @@ dependencies {
     implementation(project(":bolt-common"))
     implementation(project(":bolt-paper"))
     implementation(project(":bolt-folia"))
+    compileOnly("net.luckperms:api:5.4")
 }
 
 tasks {
