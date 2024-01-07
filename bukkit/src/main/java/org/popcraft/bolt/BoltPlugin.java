@@ -6,10 +6,7 @@ import org.bstats.bukkit.Metrics;
 import org.bstats.charts.AdvancedPie;
 import org.bstats.charts.DrilldownPie;
 import org.bstats.charts.SimplePie;
-import org.bukkit.Keyed;
-import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
-import org.bukkit.Tag;
+import org.bukkit.*;
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.command.Command;
@@ -20,6 +17,7 @@ import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.HandlerList;
 import org.bukkit.plugin.PluginManager;
+import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.BoundingBox;
@@ -156,6 +154,10 @@ import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+import net.luckperms.api.LuckPerms;
+import net.luckperms.api.cacheddata.CachedPermissionData;
+import net.luckperms.api.model.user.User;
+import net.luckperms.api.model.user.UserManager;
 public class BoltPlugin extends JavaPlugin implements BoltAPI {
     public static final boolean DEBUG = Boolean.parseBoolean(System.getProperty("boltDebug", "false"));
     private static final String COMMAND_PERMISSION_KEY = "bolt.command.";
@@ -197,6 +199,7 @@ public class BoltPlugin extends JavaPlugin implements BoltAPI {
     private int doorsCloseAfter;
     private boolean doorsFixPlugins;
     private Bolt bolt;
+    LuckPerms luckPerms;
     private CallbackManager callbackManager;
     private EventBus<Event> eventBus;
 
@@ -230,6 +233,10 @@ public class BoltPlugin extends JavaPlugin implements BoltAPI {
         // Future: Move this into LWC Migration
         new TrustMigration(this).convert();
         getServer().getServicesManager().register(BoltAPI.class, this, this, ServicePriority.Normal);
+        RegisteredServiceProvider<LuckPerms> provider = Bukkit.getServicesManager().getRegistration(LuckPerms.class);
+        if (provider != null) {
+            this.luckPerms = (LuckPerms) provider.getProvider();
+        }
     }
 
     @Override
@@ -739,7 +746,33 @@ public class BoltPlugin extends JavaPlugin implements BoltAPI {
 
     @Override
     public boolean canAccess(final Protection protection, final UUID uuid, final String... permissions) {
+        if (protection.getAccess().get("admin_lock:admin_lock") != null && protection != null) {
+            if (protection.getOwner() != null && !protection.getOwner().equals(uuid)) {
+                Player player = Bukkit.getPlayer(uuid);
+                if (player != null) {
+                    User playerUser = this.luckPerms.getPlayerAdapter(Player.class).getUser(player);
+                    UserManager userManager = this.luckPerms.getUserManager();
+                    User protectionOwner = userManager.loadUser(protection.getOwner()).join();
+                    if (playerUser != null && protectionOwner != null &&
+                            getAccessLevel(protectionOwner) > getAccessLevel(playerUser))
+                        return false;
+                }
+            }
+        }
         return canAccess(protection, new BukkitPlayerResolver(bolt, uuid), permissions);
+    }
+
+    public int getAccessLevel(User user) {
+        CachedPermissionData permissionData = user.getCachedData().getPermissionData();
+        List<Integer> accessLevels = new ArrayList<>();
+        permissionData.getPermissionMap().forEach((perm, state) -> {
+            if (perm.startsWith("bolt.accesslevel.")) {
+                String s = perm.split("\\.")[2];
+                Integer level = Integer.valueOf(s);
+                accessLevels.add(level);
+            }
+        });
+        return accessLevels.stream().max(Integer::compare).isPresent() ? ((Integer)accessLevels.stream().max(Integer::compare).get()).intValue() : 0;
     }
 
     @Override
